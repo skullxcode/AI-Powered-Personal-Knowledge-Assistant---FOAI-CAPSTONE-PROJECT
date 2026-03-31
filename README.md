@@ -1,0 +1,2 @@
+# AI-Powered-Personal-Knowledge-Assistant---FOAI-CAPSTONE-PROJECT
+An AI-powered personal knowledge assistant that allows users to upload documents such as notes, PDFs, and bookmarks, and query them using natural language. The system uses Retrieval-Augmented Generation (RAG) to perform semantic search, retrieve relevant information, and generate accurate, context-aware answers with source citations.
