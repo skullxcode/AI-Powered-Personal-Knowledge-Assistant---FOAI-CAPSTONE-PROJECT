@@ -1,5 +1,8 @@
 import streamlit as st
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_classic.memory import ConversationBufferMemory
@@ -55,10 +58,10 @@ def load_vector_db():
         embedding_function=get_embedding_function()
     )
 
-def setup_chain():
+def setup_chain(token: str = ""):
     vector_db = load_vector_db()
     if vector_db is not None:
-        st.session_state.chain = create_conversational_chain(vector_db, st.session_state.memory)
+        st.session_state.chain = create_conversational_chain(vector_db, st.session_state.memory, token)
 
 # Sidebar
 with st.sidebar:
@@ -66,21 +69,28 @@ with st.sidebar:
     uploaded_files = st.file_uploader("Upload Documents", type=["txt", "pdf", "docx"], accept_multiple_files=True)
     
     if st.button("Process & Ingest"):
-        if not uploaded_files:
+        has_existing_docs = os.path.exists(DOCS_DIR) and len(os.listdir(DOCS_DIR)) > 0
+        if not uploaded_files and not has_existing_docs:
             st.warning("Please upload files first.")
         else:
-            with st.spinner("Saving documents..."):
-                num_saved = save_uploaded_files(uploaded_files)
-                st.success(f"Saved {num_saved} document(s).")
+            if uploaded_files:
+                with st.spinner("Saving documents..."):
+                    num_saved = save_uploaded_files(uploaded_files)
+                    st.success(f"Saved {num_saved} document(s).")
+            
             
             with st.spinner("Ingesting into Vector DB..."):
                 try:
                     run_ingestion(doc_path=DOCS_DIR)
                     st.success("Ingestion complete!")
-                    setup_chain()
+                    setup_chain(os.environ.get("HF_TOKEN"))
                     st.rerun()  # Refresh so state gets correctly updated across board
                 except Exception as e:
                     st.error(f"Error during ingestion: {e}")
+
+    st.divider()
+    st.header("Database Tools")
+    st.page_link("pages/visualize_chroma.py", label="Visualize Chroma DB", icon="📊")
 
     st.divider()
     st.header("Summarize Document")
@@ -104,7 +114,7 @@ with st.sidebar:
                         docs = loader.load()
                         full_text = "\n".join([d.page_content for d in docs])
                         
-                        summary = summarize_document(full_text)
+                        summary = summarize_document(full_text, token=os.environ.get("HF_TOKEN"))
                         
                         st.success("Summary Generated!")
                         with st.expander("View Summary", expanded=True):
@@ -160,6 +170,11 @@ if query := st.chat_input("Ask a question about your documents..."):
         })
 
 # Initialize the chain lazily after the UI has fully rendered to prevent blank screens
-if st.session_state.chain is None:
-    with st.spinner("Initializing AI Engine (This might take a minute if downloading weights for the first time)..."):
-        setup_chain()
+current_token = os.environ.get("HF_TOKEN")
+if st.session_state.chain is None or st.session_state.get("_last_token") != current_token:
+    if current_token:
+        with st.spinner("Initializing AI Engine (This might take a minute if downloading weights for the first time)..."):
+            setup_chain(current_token)
+            st.session_state._last_token = current_token
+    elif os.path.exists(DB_PATH) and os.listdir(DB_PATH):
+        st.sidebar.warning("Please provide a Hugging Face Token to initialize the AI Engine.")

@@ -6,15 +6,16 @@ import os
 from typing import Optional, List, Any
 
 _llm_instance = None
+_current_token = None
 
 class CustomOnlineLLM(LLM):
     client: Any = None
 
-    def __init__(self, **kwargs):
+    def __init__(self, token: str = "", **kwargs):
         super().__init__(**kwargs)
         # Using the exact API approach provided by the user
-        token = os.environ.get("HF_TOKEN", "")
-        self.client = InferenceClient(api_key=token)
+        hf_token = token if token else os.environ.get("HF_TOKEN", "")
+        self.client = InferenceClient(api_key=hf_token)
 
     @property
     def _llm_type(self) -> str:
@@ -38,15 +39,17 @@ class CustomOnlineLLM(LLM):
         )
         return completion.choices[0].message.content
 
-def get_llm():
-    global _llm_instance
-    if _llm_instance is None:
+def get_llm(token: str = ""):
+    global _llm_instance, _current_token
+    if _llm_instance is None or (token and token != _current_token):
         print("Initializing Online Inference LLM...")
-        _llm_instance = CustomOnlineLLM()
+        _llm_instance = CustomOnlineLLM(token=token)
+        if token:
+            _current_token = token
     return _llm_instance
 
-def create_conversational_chain(vector_db, memory):
-    llm = get_llm()
+def create_conversational_chain(vector_db, memory, token: str = ""):
+    llm = get_llm(token)
     
     template = """You are a highly capable analytical assistant. 
 Answer the question relying ONLY on the Context provided below. If you cannot extract the answer from the Context, state 'I cannot answer based on the provided documents.'
@@ -68,8 +71,8 @@ Question:
     )
     return chain
 
-def summarize_document(document_content):
-    llm = get_llm()
+def summarize_document(document_content, token: str = ""):
+    llm = get_llm(token)
     # Providing a distinct summarization instruction to SmolLM
     prompt = f"Provide a comprehensive high-level summary of the following document:\n\n{document_content[:2500]}"
     return llm.invoke(prompt)
